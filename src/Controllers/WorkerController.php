@@ -65,9 +65,8 @@ class WorkerController extends LaravelController
      */
     public function queue(Request $request, WorkerInterface $worker, Container $laravel, ExceptionHandler $exceptions)
     {
-        //$this->validateHeaders($request);
         $body = $this->validateBody($request, $laravel);
-
+        
         $job = new AwsJob($laravel, $request->header('X-Aws-Sqsd-Queue'), [
             'Body' => $body,
             'MessageId' => $request->header('X-Aws-Sqsd-Msgid'),
@@ -76,17 +75,23 @@ class WorkerController extends LaravelController
                 'ApproximateReceiveCount' => $request->header('X-Aws-Sqsd-Receive-Count')
             ]
         ]);
+        
+        try {
+            $worker->process(
+                $request->header('X-Aws-Sqsd-Queue'), $job, [
+                    'maxTries' => 0,
+                    'delay' => 0
+                ]
+            );
 
-        $worker->process(
-            $request->header('X-Aws-Sqsd-Queue'), $job, [
-                'maxTries' => 0,
-                'delay' => 0
-            ]
-        );
+            return $this->response([
+                'Processed ' . $job->getJobId()
+            ]);
+        } catch (\Exception $ex) {
+            $exceptions->report($ex);
 
-        return $this->response([
-            'Processed ' . $job->getJobId()
-        ]);
+            throw $ex;
+        }
     }
 
     /**
